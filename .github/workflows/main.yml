@@ -2,11 +2,16 @@ name: Send emails daily
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 22 * * *'
+    # 08:00 Asia/Shanghai
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: read
 
 jobs:
   calculate-and-send:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -26,9 +31,17 @@ jobs:
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          LLM_MODEL: ${{ vars.LLM_MODEL || 'gpt-4o-mini' }}
           CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
         run: |
-          printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
-          echo "Use custom config: "
-          cat config/custom.yaml
+          python - <<'PY'
+          import os
+          required = ['ZOTERO_ID', 'ZOTERO_KEY', 'SENDER', 'RECEIVER', 'SENDER_PASSWORD', 'OPENAI_API_KEY', 'OPENAI_API_BASE']
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit('Missing Actions secrets: ' + ', '.join(missing))
+          PY
+          if [ -n "$CUSTOM_CONFIG" ]; then
+            printf "%s\n" "$CUSTOM_CONFIG" > config/custom.yaml
+          fi
           uv run src/zotero_arxiv_daily/main.py
